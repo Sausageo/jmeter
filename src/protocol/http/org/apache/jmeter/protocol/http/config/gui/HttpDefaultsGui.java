@@ -22,7 +22,6 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.event.ItemEvent;
-import java.awt.event.ItemListener;
 
 import javax.swing.BorderFactory;
 import javax.swing.JCheckBox;
@@ -47,7 +46,6 @@ import org.apache.jmeter.testelement.property.BooleanProperty;
 import org.apache.jmeter.testelement.property.IntegerProperty;
 import org.apache.jmeter.testelement.property.StringProperty;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.gui.JLabeledChoice;
 import org.apache.jorphan.gui.JLabeledTextField;
 
 /**
@@ -86,7 +84,7 @@ public class HttpDefaultsGui extends AbstractConfigGui {
 
     private JPasswordField proxyPass;
     
-    private JLabeledChoice httpImplementation;
+    private JComboBox<String> httpImplementation = new JComboBox<>(HTTPSamplerFactory.getImplementations());
 
     private JTextField connectTimeOut;
 
@@ -171,7 +169,7 @@ public class HttpDefaultsGui extends AbstractConfigGui {
         config.setProperty(HTTPSamplerBase.PROXYPORT, proxyPort.getText(),"");
         config.setProperty(HTTPSamplerBase.PROXYUSER, proxyUser.getText(),"");
         config.setProperty(HTTPSamplerBase.PROXYPASS, String.valueOf(proxyPass.getPassword()),"");
-        config.setProperty(HTTPSamplerBase.IMPLEMENTATION, httpImplementation.getText(),"");
+        config.setProperty(HTTPSamplerBase.IMPLEMENTATION, httpImplementation.getSelectedItem().toString(),"");
         config.setProperty(HTTPSamplerBase.CONNECT_TIMEOUT, connectTimeOut.getText());
         config.setProperty(HTTPSamplerBase.RESPONSE_TIMEOUT, responseTimeOut.getText());
 
@@ -196,7 +194,7 @@ public class HttpDefaultsGui extends AbstractConfigGui {
         proxyPort.setText(""); // $NON-NLS-1$
         proxyUser.setText(""); // $NON-NLS-1$
         proxyPass.setText(""); // $NON-NLS-1$
-        httpImplementation.setText(""); // $NON-NLS-1$
+        httpImplementation.setSelectedItem(""); // $NON-NLS-1$
         connectTimeOut.setText(""); // $NON-NLS-1$
         responseTimeOut.setText(""); // $NON-NLS-1$
     }
@@ -220,7 +218,7 @@ public class HttpDefaultsGui extends AbstractConfigGui {
         proxyPort.setText(samplerBase.getPropertyAsString(HTTPSamplerBase.PROXYPORT));
         proxyUser.setText(samplerBase.getPropertyAsString(HTTPSamplerBase.PROXYUSER));
         proxyPass.setText(samplerBase.getPropertyAsString(HTTPSamplerBase.PROXYPASS));
-        httpImplementation.setText(samplerBase.getPropertyAsString(HTTPSamplerBase.IMPLEMENTATION));
+        httpImplementation.setSelectedItem(samplerBase.getPropertyAsString(HTTPSamplerBase.IMPLEMENTATION));
         connectTimeOut.setText(samplerBase.getPropertyAsString(HTTPSamplerBase.CONNECT_TIMEOUT));
         responseTimeOut.setText(samplerBase.getPropertyAsString(HTTPSamplerBase.RESPONSE_TIMEOUT));
     }
@@ -232,11 +230,14 @@ public class HttpDefaultsGui extends AbstractConfigGui {
         // URL CONFIG
         urlConfigGui = new UrlConfigGui(false, true, false);
 
+        // HTTP request options
+        JPanel httpOptions = new HorizontalPanel();
+        httpOptions.add(getImplementationPanel());
+        httpOptions.add(getTimeOutPanel());
         // AdvancedPanel (embedded resources, source address and optional tasks)
         JPanel advancedPanel = new VerticalPanel();
+        advancedPanel.add(httpOptions);
         advancedPanel.add(createEmbeddedRsrcPanel());
-        advancedPanel.add(getTimeOutPanel());
-        advancedPanel.add(getImplementationPanel());
         advancedPanel.add(createSourceAddrPanel());
         advancedPanel.add(getProxyServerPanel());
         advancedPanel.add(createOptionalTasksPanel());
@@ -296,21 +297,15 @@ public class HttpDefaultsGui extends AbstractConfigGui {
         // retrieve Embedded resources
         retrieveEmbeddedResources = new JCheckBox(JMeterUtils.getResString("web_testing_retrieve_images")); // $NON-NLS-1$
         // add a listener to activate or not concurrent dwn.
-        retrieveEmbeddedResources.addItemListener(new ItemListener() {
-            @Override
-            public void itemStateChanged(final ItemEvent e) {
-                if (e.getStateChange() == ItemEvent.SELECTED) { enableConcurrentDwn(true); }
-                else { enableConcurrentDwn(false); }
-            }
+        retrieveEmbeddedResources.addItemListener(e -> {
+            if (e.getStateChange() == ItemEvent.SELECTED) { enableConcurrentDwn(true); }
+            else { enableConcurrentDwn(false); }
         });
         // Download concurrent resources
         concurrentDwn = new JCheckBox(JMeterUtils.getResString("web_testing_concurrent_download")); // $NON-NLS-1$
-        concurrentDwn.addItemListener(new ItemListener() {
-            @Override
-            public void itemStateChanged(final ItemEvent e) {
-                if (retrieveEmbeddedResources.isSelected() && e.getStateChange() == ItemEvent.SELECTED) { concurrentPool.setEnabled(true); }
-                else { concurrentPool.setEnabled(false); }
-            }
+        concurrentDwn.addItemListener(e -> {
+            if (retrieveEmbeddedResources.isSelected() && e.getStateChange() == ItemEvent.SELECTED) { concurrentPool.setEnabled(true); }
+            else { concurrentPool.setEnabled(false); }
         });
         concurrentPool = new JTextField(2); // 2 columns size
         concurrentPool.setMinimumSize(new Dimension(10, (int) concurrentPool.getPreferredSize().getHeight()));
@@ -383,9 +378,10 @@ public class HttpDefaultsGui extends AbstractConfigGui {
      */
     protected final JPanel getImplementationPanel(){
         JPanel implPanel = new HorizontalPanel();
-        httpImplementation = new JLabeledChoice(JMeterUtils.getResString("http_implementation"), // $NON-NLS-1$
-                HTTPSamplerFactory.getImplementations());
-        httpImplementation.addValue("");
+        implPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
+                JMeterUtils.getResString("web_server_client"))); // $NON-NLS-1$
+        implPanel.add(new JLabel(JMeterUtils.getResString("http_implementation"))); // $NON-NLS-1$
+        httpImplementation.addItem("");// $NON-NLS-1$
         implPanel.add(httpImplementation);
         return implPanel;
     }

@@ -28,8 +28,10 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.Charset;
 import java.text.DecimalFormat;
 import java.text.Format;
+import java.util.Deque;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
@@ -38,6 +40,7 @@ import javax.swing.JFileChooser;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.Timer;
 import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.TableCellRenderer;
@@ -107,7 +110,11 @@ public class SummaryReport extends AbstractVisualizer implements Clearable, Acti
      */
     private final transient Object lock = new Object();
 
+    private volatile boolean dataChanged;
+
     private final Map<String, Calculator> tableRows = new ConcurrentHashMap<>();
+
+    private final Deque<Calculator> newRows = new ConcurrentLinkedDeque<>();
 
     // Column renderers
     private static final TableCellRenderer[] RENDERERS =
@@ -163,6 +170,18 @@ public class SummaryReport extends AbstractVisualizer implements Clearable, Acti
                         Double.class, Double.class, Double.class, Double.class, Double.class, Double.class });
         clearData();
         init();
+        new Timer(200, e -> {
+            if (!dataChanged) {
+                return;
+            }
+            dataChanged = false;
+            synchronized (lock) {
+                while (!newRows.isEmpty()) {
+                    model.insertRow(newRows.pop(), model.getRowCount() - 1);
+                }
+                model.fireTableDataChanged();
+            }
+        }).start();
     }
 
     /**
@@ -182,32 +201,22 @@ public class SummaryReport extends AbstractVisualizer implements Clearable, Acti
 
     @Override
     public void add(final SampleResult res) {
-        final String sampleLabel = res.getSampleLabel(useGroupName.isSelected());
-        JMeterUtils.runSafe(false, new Runnable() {
-            @Override
-            public void run() {
-                Calculator row;
-                synchronized (lock) {
-                    row = tableRows.get(sampleLabel);
-                    if (row == null) {
-                        row = new Calculator(sampleLabel);
-                        tableRows.put(row.getLabel(), row);
-                        model.insertRow(row, model.getRowCount() - 1);
-                    }
-                }
-                /*
-                 * Synch is needed because multiple threads can update the counts.
-                 */
-                synchronized(row) {
-                    row.addSample(res);
-                }
-                Calculator tot = tableRows.get(TOTAL_ROW_LABEL);
-                synchronized(tot) {
-                    tot.addSample(res);
-                }
-                model.fireTableDataChanged();                
-            }
+        Calculator row = tableRows.computeIfAbsent(res.getSampleLabel(useGroupName.isSelected()), label -> {
+            Calculator newRow = new Calculator(label);
+            newRows.add(newRow);
+            return newRow;
         });
+        /*
+         * Synch is needed because multiple threads can update the counts.
+         */
+        synchronized (row) {
+            row.addSample(res);
+        }
+        Calculator tot = tableRows.get(TOTAL_ROW_LABEL);
+        synchronized (lock) {
+            tot.addSample(res);
+        }
+        dataChanged = true;
     }
 
     /**
@@ -218,10 +227,12 @@ public class SummaryReport extends AbstractVisualizer implements Clearable, Acti
         //Synch is needed because a clear can occur while add occurs
         synchronized (lock) {
             model.clearData();
+            newRows.clear();
             tableRows.clear();
             tableRows.put(TOTAL_ROW_LABEL, new Calculator(TOTAL_ROW_LABEL));
             model.addRow(tableRows.get(TOTAL_ROW_LABEL));
         }
+        dataChanged = true;
     }
 
     /**

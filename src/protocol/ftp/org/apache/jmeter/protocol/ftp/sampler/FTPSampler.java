@@ -45,8 +45,8 @@ import org.apache.jmeter.samplers.Entry;
 import org.apache.jmeter.samplers.Interruptible;
 import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.testelement.TestElement;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A sampler which understands FTP file requests.
@@ -56,7 +56,7 @@ public class FTPSampler extends AbstractSampler implements Interruptible {
 
     private static final long serialVersionUID = 240L;
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(FTPSampler.class);
 
     private static final Set<String> APPLIABLE_CONFIG_CLASSES = new HashSet<>(
             Arrays.asList(
@@ -183,8 +183,7 @@ public class FTPSampler extends AbstractSampler implements Interruptible {
             log.warn("Cannot set URL: "+e1.getLocalizedMessage());
         }
         InputStream input = null;
-        OutputStream output = null;
-
+        FileInputStream fileIS = null;
         res.sampleStart();
         FTPClient ftp = new FTPClient();
         try {
@@ -214,13 +213,15 @@ public class FTPSampler extends AbstractSampler implements Interruptible {
                         } else {
                             File infile = new File(local);
                             res.setBytes(infile.length());
-                            input = new BufferedInputStream(new FileInputStream(infile));
+                            fileIS = new FileInputStream(infile);
+                            input = new BufferedInputStream(fileIS);
                         }
                         ftpOK = ftp.storeFile(remote, input);
                     } else {
                         final boolean saveResponse = isSaveResponse();
                         ByteArrayOutputStream baos=null; // No need to close this
                         OutputStream target=null; 
+                        OutputStream output = null;
                         try {
                             if (saveResponse){
                                 baos  = new ByteArrayOutputStream();
@@ -255,6 +256,7 @@ public class FTPSampler extends AbstractSampler implements Interruptible {
                             }
                         } finally {
                             IOUtils.closeQuietly(target);
+                            IOUtils.closeQuietly(output);
                         }
                     }
 
@@ -292,7 +294,7 @@ public class FTPSampler extends AbstractSampler implements Interruptible {
                 }
             }
             IOUtils.closeQuietly(input);
-            IOUtils.closeQuietly(output);
+            IOUtils.closeQuietly(fileIS);
         }
 
         res.sampleEnd();

@@ -22,8 +22,8 @@ import java.net.URL;
 
 import org.apache.commons.lang3.Validate;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 import com.helger.css.handler.ICSSParseExceptionCallback;
 import com.helger.css.parser.ParseException;
@@ -32,7 +32,7 @@ import com.helger.css.reader.errorhandler.LoggingCSSParseErrorHandler;
 public class CSSParseExceptionCallback implements ICSSParseExceptionCallback {
 
     private static final long serialVersionUID = -4277276398858139449L;
-    private static final Logger LOG = LoggingManager.getLoggerForClass();
+    private static final Logger LOG = LoggerFactory.getLogger(CSSParseExceptionCallback.class);
     private static final boolean IGNORE_UNRECOVERABLE_PARSING_ERROR = JMeterUtils
             .getPropDefault(
                     "httpsampler.ignore_failed_embedded_resource", false); //$NON-NLS-1$
@@ -41,6 +41,15 @@ public class CSSParseExceptionCallback implements ICSSParseExceptionCallback {
 
     public CSSParseExceptionCallback(URL baseUrl) {
         this.baseUrl = Validate.notNull(baseUrl);
+    }
+
+    /**
+     * @deprecated - only for use from unit test code
+     */
+    @Deprecated
+    public CSSParseExceptionCallback() {
+        this.baseUrl = null;
+        LOG.warn("Constructor only intended for use in testing"); // $NON-NLS-1$
     }
 
     @Override

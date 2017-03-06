@@ -41,11 +41,11 @@ import javax.xml.transform.sax.SAXSource;
 import javax.xml.transform.stream.StreamResult;
 
 import org.apache.jmeter.assertions.AssertionResult;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
 import org.apache.xml.utils.PrefixResolver;
 import org.apache.xpath.XPathAPI;
 import org.apache.xpath.objects.XObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -61,7 +61,7 @@ import org.xml.sax.SAXParseException;
  * This class provides a few utility methods for dealing with XML/XPath.
  */
 public class XPathUtil {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(XPathUtil.class);
 
     private XPathUtil() {
         super();
@@ -131,7 +131,7 @@ public class XPathUtil {
      * @param tolerant - Is tolerant - i.e. use the Tidy parser
      * @param quiet - set Tidy quiet
      * @param showWarnings - set Tidy warnings
-     * @param report_errors - throw TidyException if Tidy detects an error
+     * @param reportErrors - throw TidyException if Tidy detects an error
      * @param isXml - is document already XML (Tidy only)
      * @param downloadDTDs - if true, try to download external DTDs
      * @return document
@@ -141,10 +141,10 @@ public class XPathUtil {
      * @throws TidyException if a ParseError is detected and <code>report_errors</code> is <code>true</code>
      */
     public static Document makeDocument(InputStream stream, boolean validate, boolean whitespace, boolean namespace,
-            boolean tolerant, boolean quiet, boolean showWarnings, boolean report_errors, boolean isXml, boolean downloadDTDs)
+            boolean tolerant, boolean quiet, boolean showWarnings, boolean reportErrors, boolean isXml, boolean downloadDTDs)
             throws ParserConfigurationException, SAXException, IOException, TidyException {
         return makeDocument(stream, validate, whitespace, namespace,
-                tolerant, quiet, showWarnings, report_errors, isXml, downloadDTDs, null);
+                tolerant, quiet, showWarnings, reportErrors, isXml, downloadDTDs, null);
     }
 
     /**
@@ -201,10 +201,10 @@ public class XPathUtil {
         doc.normalize();
         if (tidy.getParseErrors() > 0) {
             if (report_errors) {
-                log.error("TidyException: " + sw.toString());
+                log.error("TidyException: {}", sw);
                 throw new TidyException(tidy.getParseErrors(),tidy.getParseWarnings());
             }
-            log.warn("Tidy errors: " + sw.toString());
+            log.warn("Tidy errors: {}", sw);
         }
         return doc;
     }
@@ -246,7 +246,9 @@ public class XPathUtil {
 
         @Override
         public void warning(SAXParseException ex) throws SAXException {
-            log.info("Type=" + type + " " + ex);
+            if (log.isInfoEnabled()) {
+                log.info("Type={}. {}", type, ex.toString());
+            }
             if (val && !tol){
                 throw new SAXException(ex);
             }
@@ -254,7 +256,9 @@ public class XPathUtil {
 
         @Override
         public void error(SAXParseException ex) throws SAXException {
-            log.warn("Type=" + type + " " + ex);
+            if (log.isWarnEnabled()) {
+                log.warn("Type={}. {}", type, ex.toString());
+            }
             if (val && !tol) {
                 throw new SAXException(ex);
             }
@@ -262,7 +266,7 @@ public class XPathUtil {
 
         @Override
         public void fatalError(SAXParseException ex) throws SAXException {
-            log.error("Type=" + type + " " + ex);
+            log.error("Type={}. {}", type, ex.toString());
             if (val && !tol) {
                 throw new SAXException(ex);
             }
@@ -361,7 +365,9 @@ public class XPathUtil {
         } else if (objectType == XObject.CLASS_NULL
                 || objectType == XObject.CLASS_UNKNOWN
                 || objectType == XObject.CLASS_UNRESOLVEDVARIABLE) {
-            log.warn("Unexpected object type: "+xObject.getTypeString()+" returned for: "+xPathQuery);
+            if (log.isWarnEnabled()) {
+                log.warn("Unexpected object type: {} returned for: {}", xObject.getTypeString(), xPathQuery);
+            }
         } else {
             val = xObject.toString();
             matchStrings.add(val);
@@ -374,9 +380,7 @@ public class XPathUtil {
      * @return {@link PrefixResolver}
      */
     private static PrefixResolver getPrefixResolver(Document document) {
-        PropertiesBasedPrefixResolver propertiesBasedPrefixResolver =
-                new PropertiesBasedPrefixResolver(document.getDocumentElement());
-        return propertiesBasedPrefixResolver;
+        return new PropertiesBasedPrefixResolver(document.getDocumentElement());
     }
 
     /**
@@ -411,20 +415,18 @@ public class XPathUtil {
             switch (xObject.getType()) {
                 case XObject.CLASS_NODESET:
                     NodeList nodeList = xObject.nodelist();
-                    if (nodeList == null || nodeList.getLength() == 0) {
-                        if (log.isDebugEnabled()) {
-                            log.debug(new StringBuilder("nodeList null no match  ").append(xPathExpression).toString());
-                        }
+                    final int len = (nodeList != null) ? nodeList.getLength() : 0;
+                    log.debug("nodeList length {}", len);
+                    // length == 0 means nodelist is null 
+                    if (len == 0) {
+                        log.debug("nodeList is null or empty. No match by xpath expression: {}", xPathExpression);
                         result.setFailure(!isNegated);
                         result.setFailureMessage("No Nodes Matched " + xPathExpression);
                         return;
                     }
-                    if (log.isDebugEnabled()) {
-                        log.debug("nodeList length " + nodeList.getLength());
-                        if (!isNegated) {
-                            for (int i = 0; i < nodeList.getLength(); i++){
-                                log.debug(new StringBuilder("nodeList[").append(i).append("] ").append(nodeList.item(i)).toString());
-                            }
+                    if (log.isDebugEnabled() && !isNegated) {
+                        for (int i = 0; i < len; i++) {
+                            log.debug("nodeList[{}]: {}", i, nodeList.item(i));
                         }
                     }
                     result.setFailure(isNegated);

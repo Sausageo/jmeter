@@ -82,12 +82,12 @@ import org.apache.jmeter.testelement.property.TestElementProperty;
 import org.apache.jmeter.threads.JMeterContext;
 import org.apache.jmeter.threads.JMeterContextService;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.Logger;
 import org.apache.oro.text.MalformedCachePatternException;
 import org.apache.oro.text.regex.Pattern;
 import org.apache.oro.text.regex.Perl5Matcher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Common constants and methods for HTTP samplers
@@ -97,9 +97,9 @@ public abstract class HTTPSamplerBase extends AbstractSampler
     implements TestStateListener, TestIterationListener, ThreadListener, HTTPConstantsInterface,
         Replaceable {
 
-    private static final long serialVersionUID = 241L;
+    private static final long serialVersionUID = 242L;
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(HTTPSamplerBase.class);
 
     private static final Set<String> APPLIABLE_CONFIG_CLASSES = new HashSet<>(
             Arrays.asList(
@@ -452,7 +452,8 @@ public abstract class HTTPSamplerBase extends AbstractSampler
      */
     public void setPath(String path, String contentEncoding) {
         boolean fullUrl = path.startsWith(HTTP_PREFIX) || path.startsWith(HTTPS_PREFIX);
-        boolean getOrDelete = HTTPConstants.GET.equals(getMethod()) || HTTPConstants.DELETE.equals(getMethod());
+        String method = getMethod();
+        boolean getOrDelete = HTTPConstants.GET.equals(method) || HTTPConstants.DELETE.equals(method);
         if (!fullUrl && getOrDelete) {
             int index = path.indexOf(QRY_PFX);
             if (index > -1) {
@@ -825,7 +826,9 @@ public abstract class HTTPSamplerBase extends AbstractSampler
     public void setAuthManager(AuthManager value) {
         AuthManager mgr = getAuthManager();
         if (mgr != null) {
-            log.warn("Existing AuthManager " + mgr.getName() + " superseded by " + value.getName());
+            if(log.isWarnEnabled()) {
+                log.warn("Existing AuthManager {} superseded by {}", mgr.getName(), value.getName());
+            }
         }
         setProperty(new TestElementProperty(AUTH_MANAGER, value));
     }
@@ -838,7 +841,7 @@ public abstract class HTTPSamplerBase extends AbstractSampler
         HeaderManager mgr = getHeaderManager();
         HeaderManager lValue = value;
         if (mgr != null) {
-            lValue = mgr.merge(value, true);
+            lValue = mgr.merge(value);
             if (log.isDebugEnabled()) {
                 log.debug("Existing HeaderManager '" + mgr.getName() + "' merged with '" + lValue.getName() + "'");
                 for (int i = 0; i < lValue.getHeaders().size(); i++) {
@@ -861,7 +864,9 @@ public abstract class HTTPSamplerBase extends AbstractSampler
     public void setCookieManager(CookieManager value) {
         CookieManager mgr = getCookieManager();
         if (mgr != null) {
-            log.warn("Existing CookieManager " + mgr.getName() + " superseded by " + value.getName());
+            if(log.isWarnEnabled()) {
+                log.warn("Existing CookieManager {} superseded by {}", mgr.getName(), value.getName());
+            }
         }
         setCookieManagerProperty(value);
     }
@@ -878,7 +883,9 @@ public abstract class HTTPSamplerBase extends AbstractSampler
     public void setCacheManager(CacheManager value) {
         CacheManager mgr = getCacheManager();
         if (mgr != null) {
-            log.warn("Existing CacheManager " + mgr.getName() + " superseded by " + value.getName());
+            if(log.isWarnEnabled()) {
+                log.warn("Existing CacheManager {} superseded by {}", mgr.getName(), value.getName());
+            }
         }
         setCacheManagerProperty(value);
     }
@@ -894,7 +901,9 @@ public abstract class HTTPSamplerBase extends AbstractSampler
     public void setDNSResolver(DNSCacheManager cacheManager) {
         DNSCacheManager mgr = getDNSResolver();
         if (mgr != null) {
-            log.warn("Existing DNSCacheManager " + mgr.getName() + " superseded by " + cacheManager.getName());
+            if(log.isWarnEnabled()) {
+                log.warn("Existing DNSCacheManager {} superseded by {}", mgr.getName(), cacheManager.getName());
+            }
         }
         setProperty(new TestElementProperty(DNS_CACHE_MANAGER, cacheManager));
     }
@@ -964,6 +973,7 @@ public abstract class HTTPSamplerBase extends AbstractSampler
         }
         String domain = getDomain();
         String protocol = getProtocol();
+        String method = getMethod();
         if (PROTOCOL_FILE.equalsIgnoreCase(protocol)) {
             domain = null; // allow use of relative file URLs
         } else {
@@ -975,7 +985,9 @@ public abstract class HTTPSamplerBase extends AbstractSampler
         pathAndQuery.append(path);
 
         // Add the query string if it is a HTTP GET or DELETE request
-        if (HTTPConstants.GET.equals(getMethod()) || HTTPConstants.DELETE.equals(getMethod())) {
+        if (HTTPConstants.GET.equals(method) 
+                || HTTPConstants.DELETE.equals(method)
+                || HTTPConstants.OPTIONS.equals(method)) {
             // Get the query string encoded in specified encoding
             // If no encoding is specified by user, we will get it
             // encoded in UTF-8, which is what the HTTP spec says
@@ -1143,7 +1155,8 @@ public abstract class HTTPSamplerBase extends AbstractSampler
             StringBuilder stringBuffer = new StringBuilder();
             stringBuffer.append(this.getUrl().toString());
             // Append body if it is a post or put
-            if (HTTPConstants.POST.equals(getMethod()) || HTTPConstants.PUT.equals(getMethod())) {
+            String method = getMethod();
+            if (HTTPConstants.POST.equals(method) || HTTPConstants.PUT.equals(method)) {
                 stringBuffer.append("\nQuery Data: ");
                 stringBuffer.append(getQueryString());
             }
@@ -1451,6 +1464,9 @@ public abstract class HTTPSamplerBase extends AbstractSampler
      */
     @Override
     public void testEnded() {
+        if (isConcurrentDwn()) {
+            ResourcesDownloader.getInstance().shrink();
+        }
     }
 
     /**
@@ -2060,6 +2076,18 @@ public abstract class HTTPSamplerBase extends AbstractSampler
                 totalReplaced += nbReplaced;
                 String replacedText = (String) result[0];
                 setPath(replacedText);
+                totalReplaced += nbReplaced;
+            }
+        }
+
+        if(!StringUtils.isEmpty(getDomain())) {
+            Object[] result = JOrphanUtils.replaceAllWithRegex(getDomain(), regex, replaceBy, caseSensitive);            
+            // check if there is anything to replace
+            int nbReplaced = ((Integer)result[1]).intValue();
+            if (nbReplaced>0) {
+                totalReplaced += nbReplaced;
+                String replacedText = (String) result[0];
+                setDomain(replacedText);
                 totalReplaced += nbReplaced;
             }
         }

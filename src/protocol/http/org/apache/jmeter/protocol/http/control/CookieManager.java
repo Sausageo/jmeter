@@ -41,23 +41,21 @@ import org.apache.jmeter.testelement.property.JMeterProperty;
 import org.apache.jmeter.testelement.property.PropertyIterator;
 import org.apache.jmeter.threads.JMeterContext;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.reflect.ClassTools;
 import org.apache.jorphan.util.JMeterException;
 import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class provides an interface to the netscape cookies file to pass cookies
  * along with a request.
  *
- * Now uses Commons HttpClient parsing and matching code (since 2.1.2)
- *
  */
 public class CookieManager extends ConfigTestElement implements TestStateListener, TestIterationListener, Serializable {
-    private static final long serialVersionUID = 233L;
+    private static final long serialVersionUID = 234L;
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(CookieManager.class);
 
     //++ JMX tag values
     private static final String CLEAR = "CookieManager.clearEachIteration";// $NON-NLS-1$
@@ -124,7 +122,7 @@ public class CookieManager extends ConfigTestElement implements TestStateListene
      * @deprecated not intended for use outside this class (should have been created private)
      */
     @Deprecated
-    public static final String DEFAULT_IMPLEMENTATION = HC3CookieHandler.class.getName();
+    public static final String DEFAULT_IMPLEMENTATION = "org.apache.jmeter.protocol.http.control.HC3CookieHandler";
 
     public CookieManager() {
         clearCookies(); // Ensure that there is always a collection available

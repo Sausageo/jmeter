@@ -23,17 +23,26 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.concurrent.FutureCallback;
 import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.util.EntityUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
+import org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager;
+import org.apache.http.impl.nio.reactor.DefaultConnectingIOReactor;
+import org.apache.http.impl.nio.reactor.IOReactorConfig;
+import org.apache.http.nio.reactor.ConnectingIOReactor;
+import org.apache.jmeter.util.JMeterUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Influxdb sender base on The Line Protocol. The Line Protocol is a text based
@@ -45,15 +54,19 @@ import org.apache.log.Logger;
  * @since 3.2
  */
 class HttpMetricsSender extends AbstractInfluxdbMetricsSender {
-    private static final Logger LOG = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(HttpMetricsSender.class);
+
+    private final Object lock = new Object();
 
     private List<MetricTuple> metrics = new ArrayList<>();
 
     private HttpPost httpRequest;
 
-    private CloseableHttpClient httpClient;
+    private CloseableHttpAsyncClient httpClient;
 
     private URL url;
+
+    private Future<HttpResponse> lastRequest;
 
     HttpMetricsSender() {
         super();
@@ -70,9 +83,31 @@ class HttpMetricsSender extends AbstractInfluxdbMetricsSender {
      */
     @Override
     public void setup(String influxdbUrl) throws Exception {
-        httpClient = HttpClients.createDefault();
+        // Create I/O reactor configuration
+        IOReactorConfig ioReactorConfig = IOReactorConfig
+                .custom()
+                .setIoThreadCount(1)
+                .setConnectTimeout(JMeterUtils.getPropDefault("backend_influxdb.connection_timeout", 1000))
+                .setSoTimeout(JMeterUtils.getPropDefault("backend_influxdb.socket_timeout", 3000))
+                .build();
+        // Create a custom I/O reactor
+        ConnectingIOReactor ioReactor = new DefaultConnectingIOReactor(ioReactorConfig);
+
+        // Create a connection manager with custom configuration.
+        PoolingNHttpClientConnectionManager connManager = new PoolingNHttpClientConnectionManager(
+                ioReactor);
+        
+        httpClient = HttpAsyncClientBuilder.create()
+                .setConnectionManager(connManager)
+                .setMaxConnPerRoute(2)
+                .setMaxConnTotal(2)
+                .setUserAgent("ApacheJMeter"+JMeterUtils.getJMeterVersion())
+                .disableCookieManagement()
+                .disableConnectionState()
+                .build();
         url = new URL(influxdbUrl);
         httpRequest = createRequest(url);
+        httpClient.start();
     }
 
     /**
@@ -82,23 +117,22 @@ class HttpMetricsSender extends AbstractInfluxdbMetricsSender {
      */
     private HttpPost createRequest(URL url) throws URISyntaxException {
         RequestConfig defaultRequestConfig = RequestConfig.custom()
-                .setConnectTimeout(1000)
-                .setSocketTimeout(3000)
-                .setConnectionRequestTimeout(100)
+                .setConnectTimeout(JMeterUtils.getPropDefault("backend_influxdb.connection_timeout", 1000))
+                .setSocketTimeout(JMeterUtils.getPropDefault("backend_influxdb.socket_timeout", 3000))
+                .setConnectionRequestTimeout(JMeterUtils.getPropDefault("backend_influxdb.connection_request_timeout", 100))
                 .build();
         
         HttpPost httpRequest = new HttpPost(url.toURI());
         httpRequest.setConfig(defaultRequestConfig);
-        httpRequest.setHeader("User-Agent", "JMeter/1.0");
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Created InfluxDBMetricsSender with url:" + url);
-        }
+        log.debug("Created InfluxDBMetricsSender with url: {}", url);
         return httpRequest;
     }
 
     @Override
     public void addMetric(String mesurement, String tag, String field) {
-        metrics.add(new MetricTuple(mesurement, tag, field));
+        synchronized (lock) {
+            metrics.add(new MetricTuple(mesurement, tag, field, System.currentTimeMillis()));            
+        }
     }
 
     /**
@@ -107,57 +141,72 @@ class HttpMetricsSender extends AbstractInfluxdbMetricsSender {
      */
     @Override
     public void writeAndSendMetrics() {
-        if (!metrics.isEmpty()) {
+        List<MetricTuple> tempMetrics;
+        synchronized (lock) {
+            if(metrics.isEmpty()) {
+                return;
+            }
+            tempMetrics = metrics;
+            metrics = new ArrayList<>(tempMetrics.size());            
+        }
+        final List<MetricTuple> copyMetrics = tempMetrics;
+        if (!copyMetrics.isEmpty()) {
             try {
                 if(httpRequest == null) {
                     httpRequest = createRequest(url);
                 }
-                StringBuilder sb = new StringBuilder(metrics.size()*20);
-                for (MetricTuple metric : metrics) {
-                    // We let the Influxdb server fill the timestamp so we don't
-                    // add epoch time on each point
-                    sb.append(metric.measurement + metric.tag + " " + metric.field + "\n");
+                StringBuilder sb = new StringBuilder(copyMetrics.size()*35);
+                for (MetricTuple metric : copyMetrics) {
+                    // Add TimeStamp in nanosecond from epoch ( default in InfluxDB )
+                    sb.append(metric.measurement)
+                        .append(metric.tag)
+                        .append(" ") //$NON-NLS-1$
+                        .append(metric.field)
+                        .append(" ")
+                        .append(metric.timestamp+"000000") 
+                        .append("\n"); //$NON-NLS-1$
                 }
 
                 StringEntity entity = new StringEntity(sb.toString(), StandardCharsets.UTF_8);
-
+                
                 httpRequest.setEntity(entity);
-                HttpResponse response = httpClient.execute(httpRequest);
-                if (LOG.isDebugEnabled()) {
-                    int code = response.getStatusLine().getStatusCode();
-                    /*
-                     * HTTP response summary 2xx: If your write request received
-                     * HTTP 204 No Content, it was a success! 4xx: InfluxDB
-                     * could not understand the request. 5xx: The system is
-                     * overloaded or significantly impaired.
-                     */
-                    switch (code) {
-                    case 204:
-                        if(LOG.isDebugEnabled()) {
-                            LOG.debug("Success, number of metrics written : " + metrics.size());
-                        }
-                        break;
-                    default:
-                        if(LOG.isDebugEnabled()) {
-                            LOG.debug("Error writing metrics to influxDB Url: "+ url+", responseCode: " + code);
+                lastRequest = httpClient.execute(httpRequest, new FutureCallback<HttpResponse>() {
+                    @Override
+                    public void completed(final HttpResponse response) {
+                        int code = response.getStatusLine().getStatusCode();
+                        /*
+                         * HTTP response summary 2xx: If your write request received
+                         * HTTP 204 No Content, it was a success! 4xx: InfluxDB
+                         * could not understand the request. 5xx: The system is
+                         * overloaded or significantly impaired.
+                         */
+                        switch (code) {
+                        case 204:
+                            if (log.isDebugEnabled()) {
+                                log.debug("Success, number of metrics written: {}", copyMetrics.size());
+                            }
+                            break;
+                        default:
+                            log.debug("Error writing metrics to influxDB Url: {}, responseCode: {}", url, code);
                         }
                     }
-
-                }
-                EntityUtils.consumeQuietly(response.getEntity());
-
-            } catch (Exception e) {
-                // A Failure occured we abort request
-                if(httpRequest != null) {
-                    httpRequest.abort();
-                    httpRequest = null;
-                }
-                LOG.error("Error writing to InfluxDB : " + e.getMessage());
+                    @Override
+                    public void failed(final Exception ex) {
+                        log.error("failed to send data to influxDB server : {}", ex.getMessage());
+                    }
+                    @Override
+                    public void cancelled() {
+                        log.warn("Request to influxDB server was cancelled");
+                    }
+                });
+               
+            }catch (URISyntaxException ex ) {
+                log.error(ex.getMessage());
             }
         }
 
         // We drop metrics in all cases
-        metrics.clear();
+        copyMetrics.clear();
     }
 
     /**
@@ -166,6 +215,13 @@ class HttpMetricsSender extends AbstractInfluxdbMetricsSender {
      */
     @Override
     public void destroy() {
+        // Give some time to send last metrics before shutting down
+        log.info("Destroying ");
+        try {
+            lastRequest.get(5, TimeUnit.SECONDS);
+        } catch (InterruptedException | ExecutionException | TimeoutException e) {
+            log.error("Error waiting for last request to be send to InfluxDB", e);
+        }
         if(httpRequest != null) {
             httpRequest.abort();
         }

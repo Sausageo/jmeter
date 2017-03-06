@@ -102,7 +102,7 @@ The folders inside of <code>apache-jmeter</code>
 
 <p>
 As the tutorial progresses, an explanation of the subdirectories will be provided. For now, lets
-focus on <code>src</code> directory. From the screen capture, we see the following directories.
+focus on <code>src</code> directory.
 </p>
 
 <p>
@@ -114,9 +114,7 @@ The folders inside of <code>src</code>
   <dt><code>core</code></dt><dd>the core code of JMeter including all core interfaces and abstract classes.</dd>
   <dt><code>examples</code></dt><dd>example sampler demonstrating how to use the new bean framework</dd>
   <dt><code>functions</code></dt><dd>standard functions used by all components</dd>
-  <dt><code>htmlparser</code></dt><dd>a snapshot of HtmlParser, donated by HtmlParser project on sourceforge</dd>
   <dt><code>jorphan</code></dt><dd>utility classes providing common utility functions</dd>
-  <dt><code>monitor</code></dt><dd>tomcat 5 monitor components</dd>
   <dt><code>protocol</code></dt><dd>contains the different protocols JMeter supports</dd>
 </dl>
 
@@ -309,7 +307,13 @@ Writing Visualizers is somewhat of a special case, however.
 </subsection>
 
 <subsection name="&sect-num;.3 Writing a Visualizer" anchor="visualizer">
-
+<note>Load Testing in GUI mode being a bad practice, you should not develop such plugin. Have
+a look at more up to date components like:
+<ul>
+<li><a href="generating-dashboard.html">Web report</a></li>
+<li><a href="realtime-results.html">Real-Time results</a> with <a href="../api/org/apache/jmeter/visualizers/backend/BackendListenerClient.html">BackendListenerClient</a></li>
+</ul>
+</note>
 <p>
 Of the component types, visualizers require greater depth in Swing than something like controllers,
 functions or samplers. You can find the full source for the distribution graph in
@@ -513,7 +517,13 @@ added so that users can save a screen capture of any given visualizer.
 </subsection>
 
 <subsection name="&sect-num;.4 GraphListener" anchor="graphlistener">
-
+<note>Load Testing in GUI mode being a bad practice, you should not develop such plugin. Have
+a look at more up to date components like:
+<ul>
+<li><a href="generating-dashboard.html">Web report</a></li>
+<li><a href="realtime-results.html">Real-Time results</a> with <a href="../api/org/apache/jmeter/visualizers/backend/BackendListenerClient.html">BackendListenerClient</a></li>
+</ul>
+</note>
 <p>
 Visualizers should implement <code>GraphListener</code>. This is done to make it simpler to add new Sample
 instances to listeners. As a general rule, if the custom graph does not plot every single sample,
@@ -541,7 +551,13 @@ implement the interface, please look at <code>GraphVisualizer</code>.
 </subsection>
 
 <subsection name="&sect-num;.5 Writing Custom Graphs" anchor="custom-graphs">
-
+<note>Load Testing in GUI mode being a bad practice, you should not develop such plugin. Have
+a look at more up to date components like:
+<ul>
+<li><a href="generating-dashboard.html">Web report</a></li>
+<li><a href="realtime-results.html">Real-Time results</a> with <a href="../api/org/apache/jmeter/visualizers/backend/BackendListenerClient.html">BackendListenerClient</a></li>
+</ul>
+</note>
 <p>
 For those new to Swing and haven't written custom JComponents yet, I would suggest getting a
 book on Swing and get a good feel for how Swing widgets work. This tutorial will not attempt to

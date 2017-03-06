@@ -33,9 +33,9 @@ import java.util.concurrent.TimeUnit;
 import org.apache.jmeter.assertions.AssertionResult;
 import org.apache.jmeter.gui.Searchable;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 // For unit tests, @see TestSampleResult
 
@@ -49,7 +49,7 @@ public class SampleResult implements Serializable, Cloneable, Searchable {
     private static final long serialVersionUID = 241L;
 
     // Needs to be accessible from Test code
-    static final Logger log = LoggingManager.getLoggerForClass();
+    static Logger log = LoggerFactory.getLogger(SampleResult.class);
 
     /**
      * The default encoding to be used if not overridden.
@@ -928,14 +928,14 @@ public class SampleResult implements Serializable, Cloneable, Searchable {
     }
 
     /**
-     * @return whether to stop the test
+     * @return whether to stop the test waiting for current running Sampler to end
      */
     public boolean isStopTest() {
         return stopTest;
     }
 
     /**
-     * @return whether to stop the test now
+     * @return whether to stop the test now interrupting current running samplers
      */
     public boolean isStopTestNow() {
         return stopTestNow;

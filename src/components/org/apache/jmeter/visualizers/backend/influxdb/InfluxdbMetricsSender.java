@@ -33,11 +33,12 @@ interface InfluxdbMetricsSender {
         String measurement;
         String tag;
         String field;
-
-        MetricTuple(String measurment, String tag, String field) {
-            this.measurement = measurment;
+        long timestamp;
+        MetricTuple(String measurement, String tag, String field, long timestamp) {
+            this.measurement = measurement;
             this.tag = tag;
             this.field = field;
+            this.timestamp = timestamp;
         }
     }
 
@@ -56,8 +57,8 @@ interface InfluxdbMetricsSender {
 
     /**
      * Setup sender using influxDBUrl
-     * @param influxdbUrl
-     * @throws Exception 
+     * @param influxDBUrl url pointing to influxdb
+     * @throws Exception when setup fails
      */
     public void setup(String influxDBUrl) throws Exception;
 

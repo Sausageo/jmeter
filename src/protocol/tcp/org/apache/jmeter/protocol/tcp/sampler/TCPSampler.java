@@ -46,8 +46,8 @@ import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.testelement.ThreadListener;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A sampler which understands Tcp requests.
@@ -56,7 +56,7 @@ import org.apache.log.Logger;
 public class TCPSampler extends AbstractSampler implements ThreadListener, Interruptible {
     private static final long serialVersionUID = 280L;
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(TCPSampler.class);
 
     private static final Set<String> APPLIABLE_CONFIG_CLASSES = new HashSet<>(
             Arrays.asList(
@@ -131,12 +131,7 @@ public class TCPSampler extends AbstractSampler implements ThreadListener, Inter
     /** the cache of TCP Connections */
     // KEY = TCPKEY or ERRKEY, Entry= Socket or String
     private static final ThreadLocal<Map<String, Object>> tp =
-        new ThreadLocal<Map<String, Object>>() {
-        @Override
-        protected Map<String, Object> initialValue() {
-            return new HashMap<>();
-        }
-    };
+            ThreadLocal.withInitial(HashMap::new);
 
     private transient TCPClient protocolHandler;
     
@@ -167,7 +162,7 @@ public class TCPSampler extends AbstractSampler implements ThreadListener, Inter
             try {
                 closeSocket(socketKey); // Bug 44910 - close previous socket (if any)
                 SocketAddress sockaddr = new InetSocketAddress(getServer(), getPort());
-                con = new Socket();
+                con = new Socket(); // NOSONAR socket is either cache in ThreadLocal for reuse and closed at end of thread or closed here
                 if (getPropertyAsString(SO_LINGER,"").length() > 0){
                     con.setSoLinger(true, getSoLinger());
                 }

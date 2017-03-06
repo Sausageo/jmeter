@@ -60,6 +60,7 @@ public final class ActionNames {
     public static final String HEAP_DUMP        = "heap_dump"; // $NON-NLS-1$
     public static final String LAF_PREFIX       = "laf:"; // Look and Feel prefix
     public static final String LOGGER_PANEL_ENABLE_DISABLE     = "logger_panel_enable_disable"; // $NON-NLS-1$
+    public static final String LOG_LEVEL_PREFIX = "loglevel:"; // Logger level prefix
     public static final String MERGE            = "merge"; // $NON-NLS-1$
     public static final String OPEN             = "open"; // $NON-NLS-1$
     public static final String OPEN_RECENT      = "open_recent"; // $NON-NLS-1$
@@ -74,7 +75,6 @@ public final class ActionNames {
     public static final String REMOTE_STOP      = "remote_stop"; // $NON-NLS-1$
     public static final String REMOTE_STOP_ALL  = "remote_stop_all"; // $NON-NLS-1$
     public static final String REMOVE           = "remove"; // $NON-NLS-1$
-    public static final String RESET_GUI        = "reset_gui"; // $NON-NLS-1$
     public static final String REVERT_PROJECT   = "revert_project"; // $NON-NLS-1$
     public static final String SAVE             = "save"; // $NON-NLS-1$
     public static final String SAVE_ALL_AS      = "save_all_as";  // $NON-NLS-1$
@@ -103,7 +103,10 @@ public final class ActionNames {
     public static final String EXPAND           = "expand"; // $NON-NLS-1$
     public static final String RUN_TG           = "run_tg"; // $NON-NLS-1$
     public static final String RUN_TG_NO_TIMERS = "run_tg_no_timers"; // $NON-NLS-1$
+    public static final String THREAD_DUMP      = "thread_dump"; // $NON-NLS-1$
     public static final String VALIDATE_TG      = "validate_tg"; //$NON-NLS-1$
+    public static final String ZOOM_IN          = "zoom_in"; //$NON-NLS-1$
+    public static final String ZOOM_OUT         = "zoom_out"; //$NON-NLS-1$
 
     // Prevent instantiation
     private ActionNames() {}

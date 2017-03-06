@@ -36,9 +36,9 @@ import javax.swing.tree.TreeSelectionModel;
 import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.util.JMeterUtils;
 import org.apache.jmeter.util.XPathUtil;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.w3c.tidy.Tidy;
@@ -47,7 +47,7 @@ import org.xml.sax.SAXException;
 public class RenderAsXML extends SamplerResultTab
     implements ResultRenderer {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(RenderAsXML.class);
 
     private static final byte[] XML_PFX = {'<','?','x','m','l',' '};//"<?xml "
 
@@ -154,7 +154,7 @@ public class RenderAsXML extends SamplerResultTab
          * This class is to view as tooltext. This is very useful, when the
          * contents has long string and does not fit in the view. it will also
          * automatically wrap line for each 100 characters since tool tip
-         * support html. author <a href="mailto:d.maung@mdl.com">Dave Maung</a>
+         * support html. 
          */
         private static class DomTreeRenderer extends DefaultTreeCellRenderer {
 

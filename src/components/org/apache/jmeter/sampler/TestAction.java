@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.config.ConfigTestElement;
 import org.apache.jmeter.samplers.AbstractSampler;
 import org.apache.jmeter.samplers.Entry;
@@ -32,8 +33,9 @@ import org.apache.jmeter.testelement.property.IntegerProperty;
 import org.apache.jmeter.testelement.property.StringProperty;
 import org.apache.jmeter.threads.JMeterContext;
 import org.apache.jmeter.threads.JMeterContextService;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.apache.jmeter.timers.TimerService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Dummy Sampler used to pause or stop a thread or the test;
@@ -42,9 +44,11 @@ import org.apache.log.Logger;
  */
 public class TestAction extends AbstractSampler implements Interruptible {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(TestAction.class);
 
-    private static final long serialVersionUID = 240L;
+    private static final TimerService TIMER_SERVICE = TimerService.getInstance(); 
+
+    private static final long serialVersionUID = 241L;
 
     private static final Set<String> APPLIABLE_CONFIG_CLASSES = new HashSet<>(
             Arrays.asList("org.apache.jmeter.config.gui.SimpleConfigGui"));
@@ -107,15 +111,20 @@ public class TestAction extends AbstractSampler implements Interruptible {
     private void pause(String timeInMillis) {
         long millis;
         try {
-            millis=Long.parseLong(timeInMillis);
+            if(!StringUtils.isEmpty(timeInMillis)) {
+                millis=Long.parseLong(timeInMillis);
+            } else {
+                log.warn("Duration value is empty, defaulting to 0");
+                millis=0L;
+            }
         } catch (NumberFormatException e){
-            log.warn("Could not create number from "+timeInMillis);
-            millis=0;
+            log.warn("Could not parse number: '{}'", timeInMillis);
+            millis=0L;
         }
         try {
             pauseThread = Thread.currentThread();
             if(millis>0) {
-                TimeUnit.MILLISECONDS.sleep(millis);
+                TimeUnit.MILLISECONDS.sleep(TIMER_SERVICE.adjustDelay(millis));
             } else if(millis<0) {
                 throw new IllegalArgumentException("Configured sleep is negative:"+millis);
             } // else == 0 we do nothing

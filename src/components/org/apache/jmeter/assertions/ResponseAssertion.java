@@ -32,21 +32,21 @@ import org.apache.jmeter.testelement.property.NullProperty;
 import org.apache.jmeter.testelement.property.StringProperty;
 import org.apache.jmeter.util.Document;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
 import org.apache.oro.text.MalformedCachePatternException;
 import org.apache.oro.text.regex.Pattern;
 import org.apache.oro.text.regex.Perl5Compiler;
 import org.apache.oro.text.regex.Perl5Matcher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Test element to handle Response Assertions, @see AssertionGui
  * see org.apache.jmeter.assertions.ResponseAssertionTest for unit tests
  */
 public class ResponseAssertion extends AbstractScopedAssertion implements Serializable, Assertion {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(ResponseAssertion.class);
 
-    private static final long serialVersionUID = 241L;
+    private static final long serialVersionUID = 242L;
 
     private static final String TEST_FIELD = "Assertion.test_field";  // $NON-NLS-1$
 
@@ -63,6 +63,8 @@ public class ResponseAssertion extends AbstractScopedAssertion implements Serial
     private static final String RESPONSE_MESSAGE = "Assertion.response_message"; // $NON-NLS-1$
 
     private static final String RESPONSE_HEADERS = "Assertion.response_headers"; // $NON-NLS-1$
+    
+    private static final String REQUEST_HEADERS = "Assertion.request_headers"; // $NON-NLS-1$
 
     private static final String ASSUME_SUCCESS = "Assertion.assume_success"; // $NON-NLS-1$
 
@@ -139,6 +141,10 @@ public class ResponseAssertion extends AbstractScopedAssertion implements Serial
     public void setTestFieldResponseHeaders(){
         setTestField(RESPONSE_HEADERS);
     }
+    
+    public void setTestFieldRequestHeaders() {
+        setTestField(REQUEST_HEADERS);
+    }
 
     public boolean isTestFieldURL(){
         return SAMPLE_URL.equals(getTestField());
@@ -164,6 +170,10 @@ public class ResponseAssertion extends AbstractScopedAssertion implements Serial
         return RESPONSE_HEADERS.equals(getTestField());
     }
 
+    public boolean isTestFieldRequestHeaders(){
+        return REQUEST_HEADERS.equals(getTestField());
+    }
+    
     private void setTestType(int testType) {
         setProperty(new IntegerProperty(TEST_TYPE, testType));
     }
@@ -292,6 +302,8 @@ public class ResponseAssertion extends AbstractScopedAssertion implements Serial
             toCheck = response.getResponseCode();
         } else if (isTestFieldResponseMessage()) {
             toCheck = response.getResponseMessage();
+        } else if (isTestFieldRequestHeaders()) {
+            toCheck = response.getRequestHeaders();
         } else if (isTestFieldResponseHeaders()) {
             toCheck = response.getResponseHeaders();
         } else { // Assume it is the URL
@@ -310,18 +322,15 @@ public class ResponseAssertion extends AbstractScopedAssertion implements Serial
         boolean equals = isEqualsType();
         boolean substring = isSubstringType();
         boolean matches = isMatchType();
-        boolean debugEnabled = log.isDebugEnabled();
-        if (debugEnabled){
-            log.debug("Type:" + (contains?"Contains" : "Match") + (notTest? "(not)" : ""));
-            log.debug("Type:" + (contains?"Contains" : "Match") + (orTest? "(or)" : ""));
-        }
+
+        log.debug("Test Type Info: contains={}, notTest={}, orTest={}", contains, notTest, orTest);
 
         if (StringUtils.isEmpty(toCheck)) {
             if (notTest) { // Not should always succeed against an empty result
                 return result;
             }
-            if (debugEnabled){
-                log.debug("Not checking empty response field in: "+response.getSampleLabel());
+            if(log.isDebugEnabled()) {
+                log.debug("Not checking empty response field in: {}", response.getSampleLabel());
             }
             return result.setResultForNull();
         }
@@ -351,9 +360,7 @@ public class ResponseAssertion extends AbstractScopedAssertion implements Serial
                 pass = notTest ? !found : found;
                 if (orTest) {
                     if (!pass) {
-                        if (debugEnabled) {
-                            log.debug("Failed: "+stringPattern);
-                        }
+                        log.debug("Failed: {}", stringPattern);
                         allCheckMessage.add(getFailText(stringPattern,toCheck));
                     } else {
                         hasTrue=true;
@@ -361,16 +368,12 @@ public class ResponseAssertion extends AbstractScopedAssertion implements Serial
                     }
                 } else {
                     if (!pass) {
-                        if (debugEnabled){
-                            log.debug("Failed: "+stringPattern);
-                        }
+                        log.debug("Failed: {}", stringPattern);
                         result.setFailure(true);
                         result.setFailureMessage(getFailText(stringPattern,toCheck));
                         break;
                     }
-                    if (debugEnabled){
-                        log.debug("Passed: "+stringPattern);
-                    }
+                    log.debug("Passed: {}", stringPattern);
                 }
             }
             if (orTest && !hasTrue){
@@ -408,6 +411,8 @@ public class ResponseAssertion extends AbstractScopedAssertion implements Serial
             sb.append("code");
         } else if (isTestFieldResponseMessage()) {
             sb.append("message");
+        } else if (isTestFieldRequestHeaders()) {
+            sb.append("request headers");
         } else if (isTestFieldResponseHeaders()) {
             sb.append("headers");
         } else if (isTestFieldResponseDataAsDocument()) {
@@ -544,5 +549,4 @@ public class ResponseAssertion extends AbstractScopedAssertion implements Serial
         text.append("\n\n");
         return text;
     }
-
 }

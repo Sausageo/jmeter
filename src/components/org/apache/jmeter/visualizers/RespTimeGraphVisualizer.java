@@ -71,15 +71,15 @@ import org.apache.jmeter.visualizers.gui.AbstractVisualizer;
 import org.apache.jmeter.visualizers.utils.Colors;
 import org.apache.jorphan.gui.GuiUtils;
 import org.apache.jorphan.gui.JLabeledTextField;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.math.StatCalculatorLong;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RespTimeGraphVisualizer extends AbstractVisualizer implements ActionListener, Clearable {
 
-    private static final long serialVersionUID = 280L;
+    private static final long serialVersionUID = 281L;
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(RespTimeGraphVisualizer.class);
 
     private static final Font FONT_DEFAULT = UIManager.getDefaults().getFont("TextField.font"); //$NON-NLS-1$
 
@@ -277,8 +277,6 @@ public class RespTimeGraphVisualizer extends AbstractVisualizer implements Actio
 
     private Pattern pattern = null;
 
-    private transient Matcher matcher = null;
-
     private final List<Color> listColors = Colors.getColors();
 
     private final List<RespTimeGraphDataBean> internalList = new ArrayList<>(); // internal list of all results
@@ -294,6 +292,8 @@ public class RespTimeGraphVisualizer extends AbstractVisualizer implements Actio
         synchronized (lockInterval) {
             internalList.add(new RespTimeGraphDataBean(sampleResult.getStartTime(), sampleResult.getTime(), sampleLabel));
         }
+
+        Matcher matcher = null;
 
         // Sampler selection
         if (samplerSelection.isSelected() && pattern != null) {
@@ -548,7 +548,6 @@ public class RespTimeGraphVisualizer extends AbstractVisualizer implements Actio
                 pattern = createPattern(samplerMatchLabel.getText());
             } else if (forceReloadData) {
                 pattern = null;
-                matcher = null;
             }
             if (getFile() != null && getFile().length() > 0) {
                 // Reload data from file
