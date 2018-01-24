@@ -30,7 +30,7 @@
   <xsl:param name="sshotdir" select="concat($imgdir, '/screenshots')" />
   <xsl:param name="cssdir" select="concat($relative-path, '/css')" />
   <xsl:param name="jakarta-site" select="'http://jakarta.apache.org'" />
-  <xsl:param name="year" select="'2017'" />
+  <xsl:param name="year" select="'2018'" />
   <xsl:param name="max-img-width" select="'600'" />
 
   <!-- Output method -->
@@ -479,6 +479,21 @@
     </xsl:call-template>
   </xsl:template>
 
+  <xsl:template name="funclink">
+    <xsl:param name="name" />
+    <a
+      href="{concat($relative-path, '/usermanual/functions.html#', translate(@name, ' ()', '_'))}"
+    >
+      <xsl:value-of select="@name" />
+    </a>
+  </xsl:template>
+
+  <xsl:template match="funclink">
+    <xsl:call-template name="funclink">
+      <xsl:with-param name="name" select="@name" />
+    </xsl:call-template>
+  </xsl:template>
+
   <xsl:template match="figure">
     <figure>
       <xsl:call-template name="image">
@@ -505,6 +520,19 @@
     <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id={./text()}">
       Bug
       <xsl:value-of select="./text()" />
+    </a>
+    -
+  </xsl:template>
+
+  <xsl:template match="pr[following-sibling::pr or following-sibling::bug]">
+    <a href="https://github.com/apache/jmeter/pull/{./text()}">
+      Pull request #<xsl:value-of select="./text()" />
+    </a>,
+  </xsl:template>
+
+  <xsl:template match="pr[not(following-sibling::pr) and (not(preceding-sibling::*) or preceding-sibling::bug)]">
+    <a href="https://github.com/apache/jmeter/pull/{./text()}">
+      Pull request #<xsl:value-of select="./text()" />
     </a>
     -
   </xsl:template>

@@ -105,6 +105,7 @@ public class SmtpSampler extends AbstractSampler {
 
 
     public SmtpSampler() {
+        super();
     }
 
     /**
@@ -169,7 +170,7 @@ public class SmtpSampler extends AbstractSampler {
             sendMailCmd.execute(message);
             result.setResponseCodeOK();
             result.setResponseMessage(
-                    "Message successfully sent!\n" + sendMailCmd.getServerResponse());
+                    "Message successfully sent!\n");
             didSampleSucceed = true;
         } catch (AuthenticationFailedException afex) {
             log.warn("", afex);
@@ -206,6 +207,7 @@ public class SmtpSampler extends AbstractSampler {
     private List<File> getAttachmentFiles() {
         final String[] attachments = getPropertyAsString(ATTACH_FILE).split(FILENAME_SEPARATOR);
         return Arrays.stream(attachments) // NOSONAR No need to close
+                .filter(s -> !s.isEmpty())
                 .map(this::attachmentToFile)
                 .collect(Collectors.toList());
     }

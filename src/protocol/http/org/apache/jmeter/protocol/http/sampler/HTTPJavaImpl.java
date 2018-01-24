@@ -26,10 +26,12 @@ import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import java.util.zip.GZIPInputStream;
 
 import org.apache.commons.io.input.CountingInputStream;
@@ -147,11 +149,6 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
         if (proxyHost.length() > 0 && proxyPort > 0){
             Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort));
             //TODO - how to define proxy authentication for a single connection?
-            // It's not clear if this is possible
-//            String user = getProxyUser();
-//            if (user.length() > 0){
-//                Authenticator auth = new ProxyAuthenticator(user, getProxyPass());
-//            }
             conn = (HttpURLConnection) u.openConnection(proxy);
         } else {
             conn = (HttpURLConnection) u.openConnection();
@@ -206,8 +203,14 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
         }
 
         if (res != null) {
-            res.setRequestHeaders(getConnectionHeaders(conn, securityHeaders));
-            res.setCookies(cookies);
+            res.setRequestHeaders(getAllHeadersExceptCookie(conn, securityHeaders));
+            if(cookies != null && !cookies.isEmpty()) {
+                res.setCookies(cookies);
+            } else {
+                // During recording Cookie Manager doesn't handle cookies
+                res.setCookies(getOnlyCookieFromHeaders(conn, securityHeaders));
+                
+            }
         }
 
         return conn;
@@ -308,11 +311,6 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
     protected String getResponseHeaders(HttpURLConnection conn) {
         StringBuilder headerBuf = new StringBuilder();
         headerBuf.append(conn.getHeaderField(0));// Leave header as is
-        // headerBuf.append(conn.getHeaderField(0).substring(0, 8));
-        // headerBuf.append(" ");
-        // headerBuf.append(conn.getResponseCode());
-        // headerBuf.append(" ");
-        // headerBuf.append(conn.getResponseMessage());
         headerBuf.append("\n"); //$NON-NLS-1$
 
         String hfk;
@@ -363,24 +361,46 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
      *            for this <code>UrlConfig</code>
      * @param cacheManager the CacheManager (may be null)
      */
-    private void setConnectionHeaders(HttpURLConnection conn, URL u, HeaderManager headerManager, CacheManager cacheManager) {
+    private void setConnectionHeaders(HttpURLConnection conn, URL u, 
+            HeaderManager headerManager, CacheManager cacheManager) {
         // Add all the headers from the HeaderManager
+        Header[] arrayOfHeaders = null;
         if (headerManager != null) {
             CollectionProperty headers = headerManager.getHeaders();
             if (headers != null) {
+                int i=0;
+                arrayOfHeaders = new Header[headers.size()];
                 for (JMeterProperty jMeterProperty : headers) {
                     Header header = (Header) jMeterProperty.getObjectValue();
                     String n = header.getName();
                     String v = header.getValue();
+                    arrayOfHeaders[i++] = header;
                     conn.addRequestProperty(n, v);
                 }
             }
         }
         if (cacheManager != null){
-            cacheManager.setHeaders(conn, u);
+            cacheManager.setHeaders(conn, arrayOfHeaders, u);
         }
     }
 
+    /**
+     * Get only the Cookie headers for the <code>HttpURLConnection</code> passed in
+     *
+     * @param conn
+     *            <code>HttpUrlConnection</code> which represents the URL
+     *            request
+     * @param securityHeaders Map of security Header
+     * @return the headers as a string
+     */
+    private String getOnlyCookieFromHeaders(HttpURLConnection conn, Map<String, String> securityHeaders) {
+        String cookieHeader= getFromConnectionHeaders(conn, securityHeaders, ONLY_COOKIE, false).trim();
+        if(!cookieHeader.isEmpty()) {
+            return cookieHeader.substring((HTTPConstants.HEADER_COOKIE_IN_REQUEST).length(), cookieHeader.length()).trim();
+        }
+        return "";
+    }
+    
     /**
      * Get all the headers for the <code>HttpURLConnection</code> passed in
      *
@@ -390,14 +410,29 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
      * @param securityHeaders Map of security Header
      * @return the headers as a string
      */
-    private String getConnectionHeaders(HttpURLConnection conn, Map<String, String> securityHeaders) {
+    private String getAllHeadersExceptCookie(HttpURLConnection conn, Map<String, String> securityHeaders) {
+        return getFromConnectionHeaders(conn, securityHeaders, ALL_EXCEPT_COOKIE, true);
+    }
+    
+    /**
+     * Get all the headers for the <code>HttpURLConnection</code> passed in
+     *
+     * @param conn
+     *            <code>HttpUrlConnection</code> which represents the URL
+     *            request
+     * @param securityHeaders Map of security Header
+     * @param predicate {@link Predicate} 
+     * @return the headers as a string
+     */
+    private String getFromConnectionHeaders(HttpURLConnection conn, Map<String, String> securityHeaders,
+            Predicate<String> predicate, boolean addSecurityHeaders) {
         // Get all the request properties, which are the headers set on the connection
         StringBuilder hdrs = new StringBuilder(100);
         Map<String, List<String>> requestHeaders = conn.getRequestProperties();
         for(Map.Entry<String, List<String>> entry : requestHeaders.entrySet()) {
             String headerKey=entry.getKey();
             // Exclude the COOKIE header, since cookie is reported separately in the sample
-            if(!HTTPConstants.HEADER_COOKIE.equalsIgnoreCase(headerKey)) {
+            if(predicate.test(headerKey)) {
                 // value is a List of Strings
                 for (String value : entry.getValue()){
                     hdrs.append(headerKey);
@@ -407,9 +442,11 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
                 }
             }
         }
-        for(Map.Entry<String, String> entry : securityHeaders.entrySet()) {
-            hdrs.append(entry.getKey()).append(": ") // $NON-NLS-1$
-                .append(entry.getValue()).append("\n"); // $NON-NLS-1$
+        if(addSecurityHeaders) {
+            for(Map.Entry<String, String> entry : securityHeaders.entrySet()) {
+                hdrs.append(entry.getKey()).append(": ") // $NON-NLS-1$
+                    .append(entry.getValue()).append("\n"); // $NON-NLS-1$
+            }
         }
         return hdrs.toString();
     }
@@ -484,7 +521,7 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
         // Check cache for an entry with an Expires header in the future
         final CacheManager cacheManager = getCacheManager();
         if (cacheManager != null && HTTPConstants.GET.equalsIgnoreCase(method)) {
-           if (cacheManager.inCache(url)) {
+           if (cacheManager.inCache(url, getHeaders(getHeaderManager()))) {
                return updateSampleResultForResourceInCache(res);
            }
         }
@@ -586,7 +623,7 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
             res.setHeadersSize(responseHeaders.replaceAll("\n", "\r\n") // $NON-NLS-1$ $NON-NLS-2$
                     .length() + 2); // add 2 for a '\r\n' at end of headers (before data) 
             if (log.isDebugEnabled()) {
-                log.debug("Response headersSize={}, bodySize={}, Total=",
+                log.debug("Response headersSize={}, bodySize={}, Total={}",
                         res.getHeadersSize(),  res.getBodySizeAsLong(),
                         res.getHeadersSize() + res.getBodySizeAsLong());
             }
@@ -609,7 +646,9 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
             log.debug("End : sample");
             return res;
         } catch (IOException e) {
-            res.sampleEnd();
+            if (res.getEndTime() == 0) {
+                res.sampleEnd();
+            }
             savedConn = null; // we don't want interrupt to try disconnection again
             // We don't want to continue using this connection, even if KeepAlive is set
             if (conn != null) { // May not exist
@@ -624,6 +663,20 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
             savedConn = null; // we don't want interrupt to try disconnection again
             disconnect(conn); // Disconnect unless using KeepAlive
         }
+    }
+
+    private Header[] getHeaders(HeaderManager headerManager) {
+        if (headerManager != null) {
+            final CollectionProperty headers = headerManager.getHeaders();
+            if (headers != null) {
+                final List<Header> allHeaders = new ArrayList<>(headers.size());
+                for (final JMeterProperty jMeterProperty : headers) {
+                    allHeaders.add((Header) jMeterProperty.getObjectValue());
+                }
+                return allHeaders.toArray(new Header[allHeaders.size()]);
+            }
+        }
+        return new Header[0];
     }
 
     protected void disconnect(HttpURLConnection conn) {

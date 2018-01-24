@@ -22,15 +22,6 @@ package org.apache.jmeter.visualizers;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 
-import javafx.application.Platform;
-import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
-import javafx.concurrent.Worker.State;
-import javafx.embed.swing.JFXPanel;
-import javafx.scene.Scene;
-import javafx.scene.web.WebEngine;
-import javafx.scene.web.WebView;
-
 import javax.swing.BorderFactory;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -40,6 +31,15 @@ import javax.swing.SwingUtilities;
 
 import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.util.JMeterUtils;
+
+import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
+import javafx.concurrent.Worker.State;
+import javafx.embed.swing.JFXPanel;
+import javafx.scene.Scene;
+import javafx.scene.web.WebEngine;
+import javafx.scene.web.WebView;
 
 /**
  * {@link ResultRenderer} implementation that uses JAVAFX WebEngine to render as browser do
@@ -112,9 +112,7 @@ public class RenderInBrowser extends SamplerResultTab implements ResultRenderer 
 
     private void createScene(final String htmlContent) {
         Platform.setImplicitExit(false);
-        Platform.runLater(new Runnable() {
-            @Override
-            public void run() {
+        Platform.runLater(() -> {
 
                 WebView view = new WebView();
                 engine = view.getEngine();
@@ -126,12 +124,8 @@ public class RenderInBrowser extends SamplerResultTab implements ResultRenderer 
                                 .invokeLater(() -> progressBar.setValue(newValue.intValue())));
 
                 engine.getLoadWorker().exceptionProperty()
-                        .addListener(new ChangeListener<Throwable>() {
-
-                            @Override
-                            public void changed(
-                                    ObservableValue<? extends Throwable> o,
-                                    Throwable old, final Throwable value) {
+                        .addListener((ObservableValue<? extends Throwable> o,
+                                Throwable old, final Throwable value) -> {
                                 if (engine.getLoadWorker().getState() == State.FAILED) {
                                     SwingUtilities.invokeLater(() -> JOptionPane
                                             .showMessageDialog(
@@ -145,10 +139,8 @@ public class RenderInBrowser extends SamplerResultTab implements ResultRenderer 
                                                     "Loading error...",
                                                     JOptionPane.ERROR_MESSAGE));
                                 }
-                            }
                         });
                 jfxPanel.setScene(new Scene(view));
-            }
         });
     }
 

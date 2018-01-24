@@ -38,8 +38,8 @@ import org.apache.jmeter.testelement.property.NullProperty;
 import org.apache.jmeter.testelement.property.PropertyIterator;
 import org.apache.jmeter.testelement.property.TestElementProperty;
 import org.apache.jmeter.threads.JMeterContextService;
-import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.xbill.DNS.ARecord;
 import org.xbill.DNS.Cache;
 import org.xbill.DNS.ExtendedResolver;
@@ -59,7 +59,6 @@ import org.xbill.DNS.Type;
  *
  * @since 2.12
  */
-
 public class DNSCacheManager extends ConfigTestElement implements TestIterationListener, Serializable, DnsResolver {
 
     private static final long serialVersionUID = 2122L;
@@ -128,7 +127,7 @@ public class DNSCacheManager extends ConfigTestElement implements TestIterationL
             }
             ExtendedResolver result = new ExtendedResolver(serverNames);
             if (log.isDebugEnabled()) {
-                log.debug("Using DNS Resolvers: {}", Arrays.asList((result).getResolvers()));
+                log.debug("Using DNS Resolvers: {}", Arrays.asList(result.getResolvers()));
             }
             // resolvers will be chosen via round-robin
             result.setLoadBalance(true);
@@ -217,8 +216,14 @@ public class DNSCacheManager extends ConfigTestElement implements TestIterationL
                 List<InetAddress> addresses = new ArrayList<>();
                 for (String address : Arrays.asList(entry.getAddress().split("\\s*,\\s*"))) {
                     try {
-                        addresses.addAll(Arrays.asList(requestLookup(address)));
+                        final InetAddress[] requestLookup = requestLookup(address);
+                        if (requestLookup == null) {
+                            addAsLiteralAddress(addresses, address);
+                        } else {
+                            addresses.addAll(Arrays.asList(requestLookup));
+                        }
                     } catch (UnknownHostException e) {
+                        addAsLiteralAddress(addresses, address);
                         log.warn("Couldn't resolve static address {} for host {}", address, host, e);
                     }
                 }
@@ -226,6 +231,15 @@ public class DNSCacheManager extends ConfigTestElement implements TestIterationL
             }
         }
         return new InetAddress[0];
+    }
+
+    private void addAsLiteralAddress(List<InetAddress> addresses,
+            String address) {
+        try {
+            addresses.add(InetAddress.getByName(address));
+        } catch (UnknownHostException e) {
+            log.info("Couldn't convert {} as literal address to InetAddress", address, e);
+        }
     }
 
     /**

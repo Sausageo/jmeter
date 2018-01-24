@@ -86,7 +86,7 @@ public class KeyToolUtils {
         if (keytoolDir != null) {
             keytoolPath = new File(new File(keytoolDir), KEYTOOL).getPath();
             if (!checkKeytool(keytoolPath)) {
-                log.error("Cannot find keytool using property " + KEYTOOL_DIRECTORY + "=" + keytoolDir);
+                log.error("Cannot find keytool using property {}={}", KEYTOOL_DIRECTORY, keytoolDir);
                 keytoolPath = null; // don't try anything else if the property is provided
             }
         } else {
@@ -104,9 +104,9 @@ public class KeyToolUtils {
             }
         }
         if (keytoolPath == null) {
-            log.error("Unable to find keytool application. Check PATH or define system property " + KEYTOOL_DIRECTORY);
+            log.error("Unable to find keytool application. Check PATH or define system property {}", KEYTOOL_DIRECTORY);
         } else {
-            log.info("keytool found at '" + keytoolPath + "'");
+            log.info("keytool found at '{}'", keytoolPath);
         }
         KEYTOOL_PATH = keytoolPath;
     }
@@ -281,18 +281,19 @@ public class KeyToolUtils {
     private static void generateSignedCert(File keystore, String password,
             int validity, String alias, String subject) throws IOException {
         String dname = "cn=" + subject + ", o=JMeter Proxy (TEMPORARY TRUST ONLY)";
-        KeyToolUtils.genkeypair(keystore, alias, password, validity, dname, null);
+        String ext = "san=dns:" + subject;
+        KeyToolUtils.genkeypair(keystore, alias, password, validity, dname, ext);
         //rem generate cert for DOMAIN using CA and import it
 
         // get the certificate request
         ByteArrayOutputStream certReqOut = new ByteArrayOutputStream();
-        KeyToolUtils.keytool("-certreq", keystore, password, alias, null, certReqOut);
+        KeyToolUtils.keytool("-certreq", keystore, password, alias, null, certReqOut, "-ext", ext);
 
         // create the certificate
         //rem ku:c=dig,keyE means KeyUsage:critical=digitalSignature,keyEncipherment
         InputStream certReqIn = new ByteArrayInputStream(certReqOut.toByteArray());
         ByteArrayOutputStream certOut = new ByteArrayOutputStream();
-        KeyToolUtils.keytool("-gencert", keystore, password, INTERMEDIATE_CA_ALIAS, certReqIn, certOut, "-ext", "ku:c=dig,keyE");
+        KeyToolUtils.keytool("-gencert", keystore, password, INTERMEDIATE_CA_ALIAS, certReqIn, certOut, "-ext", "ku:c=dig,keyE", "-ext ", ext);
 
         // import the certificate
         InputStream certIn = new ByteArrayInputStream(certOut.toByteArray());

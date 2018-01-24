@@ -31,10 +31,16 @@ import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import javax.swing.BorderFactory;
 import javax.swing.ComboBoxModel;
@@ -53,15 +59,18 @@ import javax.swing.event.TreeSelectionListener;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
+import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 
 import org.apache.commons.collections.Buffer;
+import org.apache.commons.collections.EnumerationUtils;
 import org.apache.commons.collections.buffer.CircularFifoBuffer;
 import org.apache.commons.collections.buffer.UnboundedFifoBuffer;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.JMeter;
 import org.apache.jmeter.assertions.AssertionResult;
+import org.apache.jmeter.gui.GUIMenuSortOrder;
 import org.apache.jmeter.gui.util.VerticalPanel;
 import org.apache.jmeter.samplers.Clearable;
 import org.apache.jmeter.samplers.SampleResult;
@@ -72,8 +81,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Base for ViewResults
- *
  */
+@GUIMenuSortOrder(1)
 public class ViewResultsFullVisualizer extends AbstractVisualizer
 implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
 
@@ -82,34 +91,24 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
     private static final Logger log = LoggerFactory.getLogger(ViewResultsFullVisualizer.class);
 
     public static final Color SERVER_ERROR_COLOR = Color.red;
-
     public static final Color CLIENT_ERROR_COLOR = Color.blue;
-
     public static final Color REDIRECT_COLOR = Color.green;
-    
-    private static final Border RED_BORDER = BorderFactory.createLineBorder(Color.red);
-    
-    private static final Border BLUE_BORDER = BorderFactory.createLineBorder(Color.blue);
-
-    private  JSplitPane mainSplit;
-
-    private DefaultMutableTreeNode root;
-
-    private DefaultTreeModel treeModel;
-
-    private JTree jTree;
-
-    private Component leftSide;
-
-    private JTabbedPane rightSide;
-
-    private JComboBox<ResultRenderer> selectRenderPanel;
-
-    private int selectedTab;
 
     protected static final String COMBO_CHANGE_COMMAND = "change_combo"; // $NON-NLS-1$
 
+    private static final Border RED_BORDER = BorderFactory.createLineBorder(Color.red);
+    private static final Border BLUE_BORDER = BorderFactory.createLineBorder(Color.blue);
     private static final String ICON_SIZE = JMeterUtils.getPropDefault(JMeter.TREE_ICON_SIZE, JMeter.DEFAULT_TREE_ICON_SIZE);
+
+    // Default limited to 10 megabytes
+    private static final int MAX_DISPLAY_SIZE =
+            JMeterUtils.getPropDefault("view.results.tree.max_size", 10485760); // $NON-NLS-1$
+
+    // default display order
+    private static final String VIEWERS_ORDER =
+            JMeterUtils.getPropDefault("view.results.tree.renderers_order", ""); // $NON-NLS-1$ //$NON-NLS-2$
+
+    private static final int REFRESH_PERIOD = JMeterUtils.getPropDefault("jmeter.gui.refresh_period", 500);
 
     private static final ImageIcon imageSuccess = JMeterUtils.getImage(
             JMeterUtils.getPropDefault("viewResultsTree.success",  //$NON-NLS-1$
@@ -119,25 +118,19 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
             JMeterUtils.getPropDefault("viewResultsTree.failure",  //$NON-NLS-1$
                     "vrt/" + ICON_SIZE + "/security-low-2.png")); //$NON-NLS-1$ $NON-NLS-2$
 
-    // Maximum size that we will display
-    // Default limited to 10 megabytes
-    private static final int MAX_DISPLAY_SIZE =
-        JMeterUtils.getPropDefault("view.results.tree.max_size", 10485760); // $NON-NLS-1$
-
-    // default display order
-    private static final String VIEWERS_ORDER =
-        JMeterUtils.getPropDefault("view.results.tree.renderers_order", ""); // $NON-NLS-1$ //$NON-NLS-2$
-
-    private static final int REFRESH_PERIOD = JMeterUtils.getPropDefault("jmeter.gui.refresh_period", 500);
-
+    private JSplitPane mainSplit;
+    private DefaultMutableTreeNode root;
+    private DefaultTreeModel treeModel;
+    private JTree jTree;
+    private Component leftSide;
+    private JTabbedPane rightSide;
+    private JComboBox<ResultRenderer> selectRenderPanel;
+    private int selectedTab;
     private ResultRenderer resultsRender = null;
-
+    private Object resultsObject = null;
     private TreeSelectionEvent lastSelectionEvent;
-
     private JCheckBox autoScrollCB;
-
     private Buffer buffer;
-
     private boolean dataChanged;
 
     /**
@@ -169,17 +162,32 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
      * Update the visualizer with new data.
      */
     private void updateGui() {
+        TreePath selectedPath = null;
+        Object oldSelectedElement;
+        Set<Object> oldExpandedElements;
+        Set<TreePath> newExpandedPaths = new HashSet<>();
         synchronized (buffer) {
             if (!dataChanged) {
                 return;
             }
+            
+            final Enumeration<TreePath> expandedElements = jTree.getExpandedDescendants(new TreePath(root));
+            oldExpandedElements = extractExpandedObjects(expandedElements);
+            oldSelectedElement = getSelectedObject();
             root.removeAllChildren();
             for (Object sampler: buffer) {
                 SampleResult res = (SampleResult) sampler;
                 // Add sample
                 DefaultMutableTreeNode currNode = new SearchableTreeNode(res, treeModel);
                 treeModel.insertNodeInto(currNode, root, root.getChildCount());
-                addSubResults(currNode, res);
+                List<TreeNode> path = new ArrayList<>(Arrays.asList(root, currNode));
+                selectedPath = checkExpandedOrSelected(path,
+                        res, oldSelectedElement,
+                        oldExpandedElements, newExpandedPaths, selectedPath);
+                TreePath potentialSelection = addSubResults(currNode, res, path, oldSelectedElement, oldExpandedElements, newExpandedPaths);
+                if (potentialSelection != null) {
+                    selectedPath = potentialSelection;
+                }
                 // Add any assertion that failed as children of the sample node
                 AssertionResult[] assertionResults = res.getAssertionResults();
                 int assertionIndex = currNode.getChildCount();
@@ -187,6 +195,10 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
                     if (assertionResult.isFailure() || assertionResult.isError()) {
                         DefaultMutableTreeNode assertionNode = new SearchableTreeNode(assertionResult, treeModel);
                         treeModel.insertNodeInto(assertionNode, currNode, assertionIndex++);
+                        selectedPath = checkExpandedOrSelected(path,
+                                assertionResult, oldSelectedElement,
+                                oldExpandedElements, newExpandedPaths, selectedPath,
+                                assertionNode);
                     }
                 }
             }
@@ -197,23 +209,84 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
         if (root.getChildCount() == 1) {
             jTree.expandPath(new TreePath(root));
         }
+        newExpandedPaths.stream().forEach(jTree::expandPath);
+        if (selectedPath != null) {
+            jTree.setSelectionPath(selectedPath);
+        }
         if (autoScrollCB.isSelected() && root.getChildCount() > 1) {
             jTree.scrollPathToVisible(new TreePath(new Object[] { root,
                     treeModel.getChild(root, root.getChildCount() - 1) }));
         }
     }
 
-    private void addSubResults(DefaultMutableTreeNode currNode, SampleResult res) {
+    private Object getSelectedObject() {
+        Object oldSelectedElement;
+        DefaultMutableTreeNode oldSelectedNode = (DefaultMutableTreeNode) jTree.getLastSelectedPathComponent();
+        oldSelectedElement = oldSelectedNode == null ? null : oldSelectedNode.getUserObject();
+        return oldSelectedElement;
+    }
+
+    private TreePath checkExpandedOrSelected(List<TreeNode> path,
+            Object item, Object oldSelectedObject,
+            Set<Object> oldExpandedObjects, Set<TreePath> newExpandedPaths,
+            TreePath defaultPath) {
+        TreePath result = defaultPath;
+        if (oldSelectedObject == item) {
+            result = toTreePath(path);
+        }
+        if (oldExpandedObjects.contains(item)) {
+            newExpandedPaths.add(toTreePath(path));
+        }
+        return result;
+    }
+
+    private TreePath checkExpandedOrSelected(List<TreeNode> path,
+            Object item, Object oldSelectedObject,
+            Set<Object> oldExpandedObjects, Set<TreePath> newExpandedPaths,
+            TreePath defaultPath, DefaultMutableTreeNode extensionNode) {
+        TreePath result = defaultPath;
+        if (oldSelectedObject == item) {
+            result = toTreePath(path, extensionNode); 
+        }
+        if (oldExpandedObjects.contains(item)) {
+            newExpandedPaths.add(toTreePath(path, extensionNode));
+        }
+        return result;
+    }
+
+    private Set<Object> extractExpandedObjects(final Enumeration<TreePath> expandedElements) {
+        if (expandedElements != null) {
+            @SuppressWarnings("unchecked")
+            final List<TreePath> list = EnumerationUtils.toList(expandedElements);
+            log.debug("Expanded: {}", list);
+            Set<Object> result = list.stream()
+                    .map(TreePath::getLastPathComponent)
+                    .map(c -> (DefaultMutableTreeNode) c)
+                    .map(DefaultMutableTreeNode::getUserObject)
+                    .collect(Collectors.toSet());
+            log.debug("Elements: {}", result);
+            return result;
+        }
+        return Collections.emptySet();
+    }
+
+    private TreePath addSubResults(DefaultMutableTreeNode currNode,
+            SampleResult res, List<TreeNode> path, Object selectedObject,
+            Set<Object> oldExpandedObjects, Set<TreePath> newExpandedPaths) {
         SampleResult[] subResults = res.getSubResults();
 
         int leafIndex = 0;
+        TreePath result = null;
 
         for (SampleResult child : subResults) {
             log.debug("updateGui1 : child sample result - {}", child);
             DefaultMutableTreeNode leafNode = new SearchableTreeNode(child, treeModel);
 
             treeModel.insertNodeInto(leafNode, currNode, leafIndex++);
-            addSubResults(leafNode, child);
+            List<TreeNode> newPath = new ArrayList<>(path);
+            newPath.add(leafNode);
+            result = checkExpandedOrSelected(newPath, child, selectedObject, oldExpandedObjects, newExpandedPaths, result);
+            addSubResults(leafNode, child, newPath, selectedObject, oldExpandedObjects, newExpandedPaths);
             // Add any assertion that failed as children of the sample node
             AssertionResult[] assertionResults = child.getAssertionResults();
             int assertionIndex = leafNode.getChildCount();
@@ -221,9 +294,24 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
                 if (item.isFailure() || item.isError()) {
                     DefaultMutableTreeNode assertionNode = new SearchableTreeNode(item, treeModel);
                     treeModel.insertNodeInto(assertionNode, leafNode, assertionIndex++);
+                    result = checkExpandedOrSelected(path, item,
+                            selectedObject, oldExpandedObjects, newExpandedPaths, result,
+                            assertionNode);
                 }
             }
         }
+        return result;
+    }
+
+    private TreePath toTreePath(List<TreeNode> newPath) {
+        return new TreePath(newPath.toArray(new TreeNode[newPath.size()]));
+    }
+
+    private TreePath toTreePath(List<TreeNode> path,
+            DefaultMutableTreeNode extensionNode) {
+        TreeNode[] result = path.toArray(new TreeNode[path.size() + 1]);
+        result[result.length - 1] = extensionNode;
+        return new TreePath(result);
     }
 
     /** {@inheritDoc} */
@@ -234,6 +322,7 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
             dataChanged = true;
         }
         resultsRender.clearData();
+        resultsObject = null;
     }
 
     /** {@inheritDoc} */
@@ -273,13 +362,22 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
     /** {@inheritDoc} */
     @Override
     public void valueChanged(TreeSelectionEvent e) {
+        valueChanged(e, false);
+    }
+
+    /**
+     * @param e {@link TreeSelectionEvent}
+     * @param forceRendering boolean
+     */
+    private void valueChanged(TreeSelectionEvent e, boolean forceRendering) {
         lastSelectionEvent = e;
         DefaultMutableTreeNode node;
         synchronized (this) {
             node = (DefaultMutableTreeNode) jTree.getLastSelectedPathComponent();
         }
 
-        if (node != null) {
+        if (node != null && (forceRendering || node.getUserObject() != resultsObject)) {
+            resultsObject = node.getUserObject();
             // to restore last tab used
             if (rightSide.getTabCount() > selectedTab) {
                 resultsRender.setLastSelectedTab(rightSide.getSelectedIndex());
@@ -371,27 +469,25 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
                 log.warn("Error loading result renderer: {}", clazz, e);
             }
         }
-        if(VIEWERS_ORDER.length()>0) {
-            String[] keys = VIEWERS_ORDER.split(",");
-            for (String key : keys) {
-                if(key.startsWith(".")) {
-                    key = "org.apache.jmeter.visualizers"+key; //$NON-NLS-1$
-                }
-                ResultRenderer renderer = map.remove(key);
-                if(renderer != null) {
-                    selectRenderPanel.addItem(renderer);
-                } else {
-                    log.warn(
-                            "Missing (check spelling error in renderer name) or already added(check doublon) "
-                                    + "result renderer, check property 'view.results.tree.renderers_order', renderer name: '{}'",
-                            key);
-                }
-            }
+        if (VIEWERS_ORDER.length() > 0) {
+            Arrays.stream(VIEWERS_ORDER.split(","))
+                    .map(key -> key.startsWith(".")
+                            ? "org.apache.jmeter.visualizers" + key //$NON-NLS-1$
+                            : key)
+                    .forEach(key -> {
+                        ResultRenderer renderer = map.remove(key);
+                        if (renderer != null) {
+                            selectRenderPanel.addItem(renderer);
+                        } else {
+                            log.warn(
+                                    "Missing (check renderer name) or already added (check doublon) result renderer," +
+                                            " check property 'view.results.tree.renderers_order', renderer name: '{}'",
+                                    key);
+                        }
+                    });
         }
         // Add remaining (plugins or missed in property)
-        for (ResultRenderer renderer : map.values()) {
-            selectRenderPanel.addItem(renderer);
-        }
+        map.values().forEach(renderer -> selectRenderPanel.addItem(renderer));
         nodesModel.setSelectedItem(textObject); // preset to "Text" option
         return selectRenderPanel;
     }
@@ -419,7 +515,7 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
                     log.debug("selectedTab={}", selectedTab);
                     resultsRender.init();
                     // To display current sampler result before change
-                    this.valueChanged(lastSelectionEvent);
+                    this.valueChanged(lastSelectionEvent, true);
                 }
             }
         }

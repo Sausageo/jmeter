@@ -28,15 +28,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.jmeter.gui.Stoppable;
-import org.slf4j.LoggerFactory;
 import org.apache.jorphan.util.JOrphanUtils;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Web daemon thread. Creates main socket on port 8080 and listens on it
- * forever. For each client request, creates a Proxy thread to handle the
- * request.
- *
+ * Web daemon thread. Creates main socket on port configured port (8888 by default) and listens on it
+ * forever. For each client request, creates a Proxy thread to handle the request.
  */
 public class Daemon extends Thread implements Stoppable {
 
@@ -104,7 +102,7 @@ public class Daemon extends Thread implements Stoppable {
         this.target = target;
         this.daemonPort = port;
         this.proxyClass = proxyClass;
-        log.info("Creating Daemon Socket on port: " + daemonPort);
+        log.info("Creating Daemon Socket on port: {}", daemonPort);
         mainSocket = new ServerSocket(daemonPort);
         mainSocket.setSoTimeout(ACCEPT_TIMEOUT);
     }
@@ -145,10 +143,6 @@ public class Daemon extends Thread implements Stoppable {
         } finally {
             JOrphanUtils.closeQuietly(mainSocket);
         }
-
-        // Clear maps
-        pageEncodings = null;
-        formEncodings = null;
     }
 
     /**

@@ -221,6 +221,8 @@ public class DataSourceElement extends AbstractTestElement
         int poolSize = Integer.parseInt(maxPool);
         dataSource.setMinIdle(0);
         dataSource.setInitialSize(poolSize);
+        dataSource.setEnableAutoCommitOnReturn(false);
+        dataSource.setRollbackOnReturn(false);
         dataSource.setMaxIdle(poolSize);
         dataSource.setMaxTotal(poolSize);
         dataSource.setMaxWaitMillis(Long.parseLong(getTimeout()));
